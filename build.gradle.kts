@@ -1,6 +1,8 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    id("org.jetbrains.intellij") version "1.17.3"
-    kotlin("jvm") version "1.9.22"
+    id("org.jetbrains.intellij.platform") version "2.10.0"
+    kotlin("jvm") version "2.2.0"
     id("org.jetbrains.grammarkit") version "2022.3.2"
 }
 
@@ -9,23 +11,26 @@ version = "1.0.10"
 
 repositories {
     mavenCentral()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
-val includeInJar by configurations.creating {
+val includeInJar: Configuration by configurations.creating {
     isTransitive = false
 }
 
 dependencies {
     val jsltLibVersion = "0.1.14"
-    implementation(kotlin("stdlib"))
+    // Removed explicit kotlin stdlib dependency to avoid version conflicts with the IDE platform
     implementation("com.schibsted.spt.data:jslt:$jsltLibVersion")
     includeInJar("com.schibsted.spt.data:jslt:$jsltLibVersion") // explicitly include this file in the build step
-}
 
-// See https://github.com/JetBrains/gradle-intellij-plugin/
-intellij {
-    version.set("2024.1")
-    plugins.set(listOf("org.jetbrains.plugins.yaml"))
+    // Configure the IntelliJ Platform dependency and bundled plugins using the 2.x DSL
+    intellijPlatform {
+        create("IC", "2025.2")
+        bundledPlugins("org.jetbrains.plugins.yaml")
+    }
 }
 
 grammarKit {
@@ -36,7 +41,7 @@ grammarKit {
     grammarKitRelease.set("2021.1.2")
 
     // Optionally provide an IntelliJ version to build the classpath for GenerateParser/GenerateLexer tasks
-    intellijRelease.set("241.14494.240")
+    intellijRelease.set("252")
 }
 
 
@@ -51,17 +56,20 @@ sourceSets {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(17))
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+}
+
+kotlin {
+    // Keep toolchain aligned with Java 21
+    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
     }
 }
 
 
 tasks {
-    withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions {
-            jvmTarget = "17"
-        }
-    }
     generateLexer {
         // source flex file
         sourceFile.set(File("src/main/grammar/jslt.flex"))
@@ -96,16 +104,21 @@ tasks {
         purgeOldFiles.set(true)
     }
 
+    buildSearchableOptions {
+        enabled = false
+    }
+
     jar {
         from(zipTree(includeInJar.singleFile))
     }
 
     patchPluginXml {
-        sinceBuild.set("241")
-        untilBuild.set("243")
-        changeNotes.set("""
-            Support idea from version 232 to 242
-        """.trimIndent())
+        sinceBuild.set("252")
+        changeNotes.set(
+            """
+            Minimum IDE version raised to 2025.2; removed upper build bound to stay compatible with future IDE releases.
+            """.trimIndent()
+        )
     }
 
 }
