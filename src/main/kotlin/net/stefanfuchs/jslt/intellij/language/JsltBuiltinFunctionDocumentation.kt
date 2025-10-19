@@ -90,4 +90,11 @@ object JsltBuiltinFunctionDocumentation {
         val lines = fullDoc.split("\n")
         return if (lines.size > 1) lines[1] else ""
     }
+    
+    /**
+     * Get all documented function names
+     */
+    fun getAllFunctionNames(): Set<String> {
+        return functionDocs.keys
+    }
 }

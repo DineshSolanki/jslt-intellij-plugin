@@ -102,8 +102,12 @@ class JsltAnnotator : Annotator {
     private fun annotateFunctionName(element: JsltFunctionName, holder: AnnotationHolder) {
         val funcDecl = element.reference.resolve()
         if (funcDecl !is JsltFunctionDeclNameDecl) {
-            if (element.name in BuiltinFunctions.functions.keys) {
-                val funcName = element.name ?: ""
+            val funcName = element.name ?: ""
+            // Check if it's a built-in function (from JSLT library or our documentation)
+            val isBuiltinFromLibrary = funcName in BuiltinFunctions.functions.keys
+            val isDocumented = JsltBuiltinFunctionDocumentation.getDocumentation(funcName) != null
+            
+            if (isBuiltinFromLibrary || isDocumented) {
                 val doc = JsltBuiltinFunctionDocumentation.getDocumentation(funcName) ?: "Built-in function"
                 holder
                     .newAnnotation(HighlightSeverity.INFORMATION, doc)

@@ -31,7 +31,11 @@ class JsltCompletionContributor : CompletionContributor() {
                     resultSet.addElement(LookupElementBuilder.create("def").bold())
 
                     // Add built-in functions with documentation
-                    BuiltinFunctions.functions.keys.sorted().forEach { funcName ->
+                    // Combine functions from JSLT library and our documentation
+                    val allFunctions = (BuiltinFunctions.functions.keys + 
+                        JsltBuiltinFunctionDocumentation.getAllFunctionNames()).toSet().sorted()
+                    
+                    allFunctions.forEach { funcName ->
                         val doc = JsltBuiltinFunctionDocumentation.getShortDescription(funcName)
                         resultSet.addElement(
                             LookupElementBuilder
