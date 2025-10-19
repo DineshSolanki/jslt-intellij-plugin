@@ -1,7 +1,0 @@
-<idea-plugin>
-    <extensions defaultExtensionNs="com.intellij">
-        <languageInjectionContributor
-                language="JAVA"
-                implementationClass="net.stefanfuchs.jslt.intellij.language.JsltJavaLanguageInjectionContributor"/>
-    </extensions>
-</idea-plugin>

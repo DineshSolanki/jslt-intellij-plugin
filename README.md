@@ -7,7 +7,6 @@
   * differentiate global/local/parameter variables
   * differentiate buildin/def functions
   * highlight JSLT in YAML multiline text (">") if first line of text start with `// JSLT`
-  * highlight JSLT in multiline strings in Java/Scala/Kotlin files if first line of text start with `// JSLT`
 * Line comment code 
 * Parenthesis Matching
 * Code Folding

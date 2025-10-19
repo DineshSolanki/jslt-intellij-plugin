@@ -1,7 +1,0 @@
-<idea-plugin>
-    <extensions defaultExtensionNs="com.intellij">
-        <languageInjectionContributor
-                language="Scala"
-                implementationClass="net.stefanfuchs.jslt.intellij.language.JsltScalaLanguageInjectionContributor"/>
-    </extensions>
-</idea-plugin>

@@ -53,9 +53,6 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.yaml</depends>
     <depends>com.intellij.modules.json</depends>
-    <depends optional="true" config-file="jslt-java.xml">com.intellij.modules.java</depends>
-    <depends optional="true" config-file="jslt-kotlin.xml">org.jetbrains.kotlin</depends>
-    <depends optional="true" config-file="jslt-scala.xml">org.jetbrains.plugins.scala</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <fileType
