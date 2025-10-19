@@ -214,13 +214,13 @@ class JsltAnnotator : Annotator {
     private fun annotateFunctionCall(element: JsltFunctionCall, holder: AnnotationHolder) {
         val functionName = element.functionName
         val funcDecl = functionName.reference.resolve()
+        val callArgCount = element.exprList.size
         
         // Check if it's a user-defined function (not a built-in)
         if (funcDecl is JsltFunctionDeclNameDecl) {
             val functionDecl = funcDecl.parent as? JsltFunctionDecl
             if (functionDecl != null) {
                 val declaredParamCount = functionDecl.functionDeclParamList?.functionDeclParamDeclList?.size ?: 0
-                val callArgCount = element.exprList.size
                 
                 if (declaredParamCount != callArgCount) {
                     holder
@@ -232,6 +232,102 @@ class JsltAnnotator : Annotator {
                         .create()
                 }
             }
+        } else {
+            // Check built-in functions
+            val funcName = functionName.name ?: return
+            val expectedParams = getBuiltinFunctionParamCount(funcName)
+            
+            if (expectedParams != null) {
+                val (minParams, maxParams, isVariadic) = expectedParams
+                
+                if (isVariadic && callArgCount < minParams) {
+                    holder
+                        .newAnnotation(
+                            HighlightSeverity.ERROR,
+                            "Function '$funcName' requires at least $minParams parameter(s), but $callArgCount provided"
+                        )
+                        .range(element.textRange)
+                        .create()
+                } else if (!isVariadic && (callArgCount < minParams || callArgCount > maxParams)) {
+                    val paramRange = if (minParams == maxParams) "$minParams" else "$minParams-$maxParams"
+                    holder
+                        .newAnnotation(
+                            HighlightSeverity.ERROR,
+                            "Function '$funcName' expects $paramRange parameter(s), but $callArgCount provided"
+                        )
+                        .range(element.textRange)
+                        .create()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Returns (minParams, maxParams, isVariadic) for built-in functions
+     * isVariadic = true means function accepts unlimited parameters beyond minParams
+     */
+    private fun getBuiltinFunctionParamCount(funcName: String): Triple<Int, Int, Boolean>? {
+        return when (funcName) {
+            // General functions
+            "contains" -> Triple(2, 2, false)
+            "size" -> Triple(1, 1, false)
+            "error" -> Triple(1, 1, false)
+            "fallback" -> Triple(1, Int.MAX_VALUE, true)  // variadic
+            "min" -> Triple(2, 2, false)
+            "max" -> Triple(2, 2, false)
+            
+            // Numeric functions
+            "is-number", "is-integer", "is-decimal" -> Triple(1, 1, false)
+            "number" -> Triple(1, 2, false)  // optional fallback
+            "round", "floor", "ceiling" -> Triple(1, 1, false)
+            "random" -> Triple(0, 0, false)
+            "sum" -> Triple(1, 1, false)
+            "mod" -> Triple(2, 2, false)
+            "hash-int" -> Triple(1, 1, false)
+            
+            // String functions
+            "is-string" -> Triple(1, 1, false)
+            "string" -> Triple(1, 1, false)
+            "test" -> Triple(2, 2, false)
+            "capture" -> Triple(2, 2, false)
+            "split" -> Triple(2, 2, false)
+            "join" -> Triple(2, 2, false)
+            "lowercase", "uppercase" -> Triple(1, 1, false)
+            "sha256-hex" -> Triple(1, 1, false)
+            "starts-with", "ends-with" -> Triple(2, 2, false)
+            "from-json" -> Triple(1, 2, false)  // optional fallback
+            "to-json" -> Triple(1, 1, false)
+            "replace" -> Triple(3, 3, false)
+            "trim" -> Triple(1, 1, false)
+            "uuid" -> Triple(2, 2, false)
+            
+            // Boolean functions
+            "boolean" -> Triple(1, 1, false)
+            "not" -> Triple(1, 1, false)
+            "is-boolean" -> Triple(1, 1, false)
+            
+            // Object functions
+            "is-object" -> Triple(1, 1, false)
+            "get-key" -> Triple(2, 3, false)  // optional fallback
+            
+            // Array functions
+            "array" -> Triple(1, 1, false)
+            "is-array" -> Triple(1, 1, false)
+            "flatten" -> Triple(1, 1, false)
+            "all", "any" -> Triple(1, 1, false)
+            "zip" -> Triple(2, 2, false)
+            "zip-with-index" -> Triple(1, 1, false)
+            "index-of" -> Triple(2, 2, false)
+            
+            // Time functions
+            "now" -> Triple(0, 0, false)
+            "parse-time" -> Triple(2, 3, false)  // optional fallback
+            "format-time" -> Triple(2, 3, false)  // optional timezone
+            
+            // URL functions
+            "parse-url" -> Triple(1, 1, false)
+            
+            else -> null  // Unknown function, don't validate
         }
     }
 
