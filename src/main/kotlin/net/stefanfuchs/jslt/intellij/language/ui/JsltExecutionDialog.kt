@@ -4,12 +4,9 @@ import com.intellij.json.JsonFileType
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.EditorTextField
 import com.intellij.ui.LanguageTextField
 import com.schibsted.spt.data.jslt.Parser
-import com.schibsted.spt.data.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.TextNode
 import net.stefanfuchs.jslt.intellij.language.JsltLanguage
 import java.awt.BorderLayout
 import java.awt.Dimension
