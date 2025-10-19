@@ -4,7 +4,9 @@ import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiErrorElement
 import com.intellij.psi.PsiRecursiveElementWalkingVisitor
+import com.intellij.psi.TokenType
 import com.intellij.psi.util.childrenOfType
 import com.intellij.psi.util.elementType
 import com.schibsted.spt.data.jslt.impl.BuiltinFunctions
@@ -14,6 +16,7 @@ import net.stefanfuchs.jslt.intellij.language.psi.*
 class JsltAnnotator : Annotator {
     override fun annotate(element: PsiElement, holder: AnnotationHolder) {
         when (element) {
+            is PsiErrorElement -> annotateError(element, holder)
             is JsltVariableUsage -> annotateVariableUsage(element, holder)
             is JsltLetVariableDecl -> annotateLetVariableDecl(element, holder)
             is JsltFunctionName -> annotateFunctionName(element, holder)
@@ -24,6 +27,37 @@ class JsltAnnotator : Annotator {
             is JsltFunctionCall -> annotateFunctionCall(element, holder)
         }
 
+        // Check for BAD_CHARACTER tokens
+        if (element.node.elementType == TokenType.BAD_CHARACTER) {
+            holder
+                .newAnnotation(HighlightSeverity.ERROR, "Unexpected character: '${element.text}'")
+                .create()
+        }
+    }
+
+    private fun annotateError(element: PsiErrorElement, holder: AnnotationHolder) {
+        val errorDesc = element.errorDescription
+        // Provide more meaningful error messages
+        val message = when {
+            errorDesc.contains("expected") -> {
+                // Try to improve the message
+                errorDesc.replace("IDENT", "identifier")
+                    .replace("LPAREN", "'('")
+                    .replace("RPAREN", "')'")
+                    .replace("LBRACE", "'{'")
+                    .replace("RBRACE", "'}'")
+                    .replace("LBRACKET", "'['")
+                    .replace("RBRACKET", "']'")
+                    .replace("COMMA", "','")
+                    .replace("COLON", "':'")
+                    .replace("SEMICOLON", "';'")
+            }
+            else -> errorDesc
+        }
+        
+        holder
+            .newAnnotation(HighlightSeverity.ERROR, message)
+            .create()
     }
 
     private fun annotateVariableUsage(element: JsltVariableUsage, holder: AnnotationHolder) {
