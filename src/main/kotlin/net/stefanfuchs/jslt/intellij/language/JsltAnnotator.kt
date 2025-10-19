@@ -4,6 +4,7 @@ import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiRecursiveElementWalkingVisitor
 import com.intellij.psi.util.childrenOfType
 import com.intellij.psi.util.elementType
 import com.schibsted.spt.data.jslt.impl.BuiltinFunctions
@@ -20,6 +21,7 @@ class JsltAnnotator : Annotator {
             is JsltFunctionDeclParamDecl -> annotateFunctionDeclParamDecl(element, holder)
             is JsltImportDeclaration -> annotateImportDecl(element, holder)
             is JsltPair -> annotatePair(element, holder)
+            is JsltFunctionCall -> annotateFunctionCall(element, holder)
         }
 
     }
@@ -53,6 +55,13 @@ class JsltAnnotator : Annotator {
             holder
                 .newAnnotation(HighlightSeverity.ERROR, "Duplicate variable declaration")
                 .create()
+        } else {
+            // Check if variable is unused
+            if (!isVariableUsed(element)) {
+                holder
+                    .newAnnotation(HighlightSeverity.WARNING, "Unused variable '${element.name}'")
+                    .create()
+            }
         }
     }
 
@@ -96,6 +105,13 @@ class JsltAnnotator : Annotator {
         val nameCount = element.containingFile.childrenOfType<JsltFunctionDecl>().count { it.name == element.name }
         if (nameCount > 1) {
             holder.newAnnotation(HighlightSeverity.ERROR, "Duplicate function declaration").create()
+        } else {
+            // Check if function is unused
+            if (!isFunctionUsed(element)) {
+                holder
+                    .newAnnotation(HighlightSeverity.WARNING, "Unused function '${element.name}'")
+                    .create()
+            }
         }
     }
 
@@ -105,6 +121,13 @@ class JsltAnnotator : Annotator {
             .count { it.name == element.name }
         if (paramNameCount > 1) {
             holder.newAnnotation(HighlightSeverity.ERROR, "Duplicate parameter declaration").create()
+        } else {
+            // Check if parameter is unused
+            if (!isParameterUsed(element)) {
+                holder
+                    .newAnnotation(HighlightSeverity.WARNING, "Unused parameter '${element.name}'")
+                    .create()
+            }
         }
     }
 
@@ -121,6 +144,14 @@ class JsltAnnotator : Annotator {
                 .newAnnotation(HighlightSeverity.ERROR, "Duplicate import alias")
                 .range(element.nameIdentifier!!.textRange)
                 .create()
+        } else {
+            // Check if import alias is unused
+            if (!isImportAliasUsed(element)) {
+                holder
+                    .newAnnotation(HighlightSeverity.WARNING, "Unused import alias '${element.name}'")
+                    .range(element.nameIdentifier!!.textRange)
+                    .create()
+            }
         }
     }
 
@@ -138,6 +169,111 @@ class JsltAnnotator : Annotator {
                     .create()
             }
         }
+    }
+
+    private fun annotateFunctionCall(element: JsltFunctionCall, holder: AnnotationHolder) {
+        val functionName = element.functionName
+        val funcDecl = functionName.reference.resolve()
+        
+        // Check if it's a user-defined function (not a built-in)
+        if (funcDecl is JsltFunctionDeclNameDecl) {
+            val functionDecl = funcDecl.parent as? JsltFunctionDecl
+            if (functionDecl != null) {
+                val declaredParamCount = functionDecl.functionDeclParamList?.functionDeclParamDeclList?.size ?: 0
+                val callArgCount = element.exprList.size
+                
+                if (declaredParamCount != callArgCount) {
+                    holder
+                        .newAnnotation(
+                            HighlightSeverity.ERROR, 
+                            "Function '${functionName.name}' expects $declaredParamCount parameter(s), but $callArgCount provided"
+                        )
+                        .range(element.textRange)
+                        .create()
+                }
+            }
+        }
+    }
+
+    private fun isVariableUsed(variableDecl: JsltLetVariableDecl): Boolean {
+        val varName = variableDecl.name ?: return true
+        val file = variableDecl.containingFile
+        
+        var isUsed = false
+        file.accept(object : PsiRecursiveElementWalkingVisitor() {
+            override fun visitElement(element: PsiElement) {
+                if (element is JsltVariableUsage && element.name == varName) {
+                    val resolved = element.reference.resolve()
+                    if (resolved == variableDecl) {
+                        isUsed = true
+                        stopWalking()
+                    }
+                }
+                super.visitElement(element)
+            }
+        })
+        
+        return isUsed
+    }
+
+    private fun isFunctionUsed(functionDecl: JsltFunctionDeclNameDecl): Boolean {
+        val funcName = functionDecl.name ?: return true
+        val file = functionDecl.containingFile
+        
+        var isUsed = false
+        file.accept(object : PsiRecursiveElementWalkingVisitor() {
+            override fun visitElement(element: PsiElement) {
+                if (element is JsltFunctionName && element.name == funcName) {
+                    val resolved = element.reference.resolve()
+                    if (resolved == functionDecl) {
+                        isUsed = true
+                        stopWalking()
+                    }
+                }
+                super.visitElement(element)
+            }
+        })
+        
+        return isUsed
+    }
+
+    private fun isParameterUsed(paramDecl: JsltFunctionDeclParamDecl): Boolean {
+        val paramName = paramDecl.name ?: return true
+        val functionDecl = paramDecl.parent?.parent as? JsltFunctionDecl ?: return true
+        
+        var isUsed = false
+        functionDecl.accept(object : PsiRecursiveElementWalkingVisitor() {
+            override fun visitElement(element: PsiElement) {
+                if (element is JsltVariableUsage && element.name == paramName) {
+                    val resolved = element.reference.resolve()
+                    if (resolved == paramDecl) {
+                        isUsed = true
+                        stopWalking()
+                    }
+                }
+                super.visitElement(element)
+            }
+        })
+        
+        return isUsed
+    }
+
+    private fun isImportAliasUsed(importDecl: JsltImportDeclaration): Boolean {
+        val aliasName = importDecl.name ?: return true
+        val file = importDecl.containingFile
+        
+        var isUsed = false
+        file.accept(object : PsiRecursiveElementWalkingVisitor() {
+            override fun visitElement(element: PsiElement) {
+                if (element is JsltFunctionName && element.importAlias == aliasName) {
+                    isUsed = true
+                    stopWalking()
+                }
+                super.visitElement(element)
+            }
+        })
+        
+        return isUsed
     }
 
 }

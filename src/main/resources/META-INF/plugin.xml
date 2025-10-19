@@ -52,6 +52,9 @@
          on how to target different products -->
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.yaml</depends>
+    <depends optional="true" config-file="jslt-java.xml">com.intellij.modules.java</depends>
+    <depends optional="true" config-file="jslt-kotlin.xml">org.jetbrains.kotlin</depends>
+    <depends optional="true" config-file="jslt-scala.xml">org.jetbrains.plugins.scala</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <fileType
