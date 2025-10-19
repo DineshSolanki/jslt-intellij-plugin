@@ -235,26 +235,15 @@ class JsltAnnotator : Annotator {
         } else {
             // Check built-in functions
             val funcName = functionName.name ?: return
-            val expectedParams = getBuiltinFunctionParamCount(funcName)
+            val paramInfo = getBuiltinFunctionParamInfo(funcName)
             
-            if (expectedParams != null) {
-                val (minParams, maxParams, isVariadic) = expectedParams
+            if (paramInfo != null) {
+                val isValid = paramInfo.isValidParamCount(callArgCount)
                 
-                if (isVariadic && callArgCount < minParams) {
+                if (!isValid) {
+                    val errorMsg = paramInfo.getErrorMessage(funcName, callArgCount)
                     holder
-                        .newAnnotation(
-                            HighlightSeverity.ERROR,
-                            "Function '$funcName' requires at least $minParams parameter(s), but $callArgCount provided"
-                        )
-                        .range(element.textRange)
-                        .create()
-                } else if (!isVariadic && (callArgCount < minParams || callArgCount > maxParams)) {
-                    val paramRange = if (minParams == maxParams) "$minParams" else "$minParams-$maxParams"
-                    holder
-                        .newAnnotation(
-                            HighlightSeverity.ERROR,
-                            "Function '$funcName' expects $paramRange parameter(s), but $callArgCount provided"
-                        )
+                        .newAnnotation(HighlightSeverity.ERROR, errorMsg)
                         .range(element.textRange)
                         .create()
                 }
@@ -263,69 +252,105 @@ class JsltAnnotator : Annotator {
     }
     
     /**
-     * Returns (minParams, maxParams, isVariadic) for built-in functions
-     * isVariadic = true means function accepts unlimited parameters beyond minParams
+     * Parameter information for built-in functions
      */
-    private fun getBuiltinFunctionParamCount(funcName: String): Triple<Int, Int, Boolean>? {
+    private sealed class ParamInfo {
+        abstract fun isValidParamCount(count: Int): Boolean
+        abstract fun getErrorMessage(funcName: String, actualCount: Int): String
+        
+        /** Fixed number of parameters */
+        data class Fixed(val count: Int) : ParamInfo() {
+            override fun isValidParamCount(count: Int) = count == this.count
+            override fun getErrorMessage(funcName: String, actualCount: Int) =
+                "Function '$funcName' expects $count parameter(s), but $actualCount provided"
+        }
+        
+        /** Range of parameters (for optional parameters) */
+        data class Range(val min: Int, val max: Int) : ParamInfo() {
+            override fun isValidParamCount(count: Int) = count in min..max
+            override fun getErrorMessage(funcName: String, actualCount: Int) =
+                "Function '$funcName' expects $min-$max parameter(s), but $actualCount provided"
+        }
+        
+        /** Variadic parameters (minimum required, unlimited maximum) */
+        data class Variadic(val minParams: Int) : ParamInfo() {
+            override fun isValidParamCount(count: Int) = count >= minParams
+            override fun getErrorMessage(funcName: String, actualCount: Int) =
+                "Function '$funcName' requires at least $minParams parameter(s), but $actualCount provided"
+        }
+        
+        /** Specific allowed counts (e.g., 0 or 2, but not 1) */
+        data class Specific(val allowedCounts: Set<Int>) : ParamInfo() {
+            override fun isValidParamCount(count: Int) = count in allowedCounts
+            override fun getErrorMessage(funcName: String, actualCount: Int): String {
+                val countsStr = allowedCounts.sorted().joinToString(" or ")
+                return "Function '$funcName' expects $countsStr parameter(s), but $actualCount provided"
+            }
+        }
+    }
+    
+    /**
+     * Returns parameter information for built-in functions
+     */
+    private fun getBuiltinFunctionParamInfo(funcName: String): ParamInfo? {
         return when (funcName) {
             // General functions
-            "contains" -> Triple(2, 2, false)
-            "size" -> Triple(1, 1, false)
-            "error" -> Triple(1, 1, false)
-            "fallback" -> Triple(1, Int.MAX_VALUE, true)  // variadic
-            "min" -> Triple(2, 2, false)
-            "max" -> Triple(2, 2, false)
+            "contains" -> ParamInfo.Fixed(2)
+            "size" -> ParamInfo.Fixed(1)
+            "error" -> ParamInfo.Fixed(1)
+            "fallback" -> ParamInfo.Variadic(1)  // variadic
+            "min", "max" -> ParamInfo.Fixed(2)
             
             // Numeric functions
-            "is-number", "is-integer", "is-decimal" -> Triple(1, 1, false)
-            "number" -> Triple(1, 2, false)  // optional fallback
-            "round", "floor", "ceiling" -> Triple(1, 1, false)
-            "random" -> Triple(0, 0, false)
-            "sum" -> Triple(1, 1, false)
-            "mod" -> Triple(2, 2, false)
-            "hash-int" -> Triple(1, 1, false)
+            "is-number", "is-integer", "is-decimal" -> ParamInfo.Fixed(1)
+            "number" -> ParamInfo.Range(1, 2)  // optional fallback
+            "round", "floor", "ceiling" -> ParamInfo.Fixed(1)
+            "random" -> ParamInfo.Fixed(0)
+            "sum" -> ParamInfo.Fixed(1)
+            "mod" -> ParamInfo.Fixed(2)
+            "hash-int" -> ParamInfo.Fixed(1)
             
             // String functions
-            "is-string" -> Triple(1, 1, false)
-            "string" -> Triple(1, 1, false)
-            "test" -> Triple(2, 2, false)
-            "capture" -> Triple(2, 2, false)
-            "split" -> Triple(2, 2, false)
-            "join" -> Triple(2, 2, false)
-            "lowercase", "uppercase" -> Triple(1, 1, false)
-            "sha256-hex" -> Triple(1, 1, false)
-            "starts-with", "ends-with" -> Triple(2, 2, false)
-            "from-json" -> Triple(1, 2, false)  // optional fallback
-            "to-json" -> Triple(1, 1, false)
-            "replace" -> Triple(3, 3, false)
-            "trim" -> Triple(1, 1, false)
-            "uuid" -> Triple(2, 2, false)
+            "is-string" -> ParamInfo.Fixed(1)
+            "string" -> ParamInfo.Fixed(1)
+            "test" -> ParamInfo.Fixed(2)
+            "capture" -> ParamInfo.Fixed(2)
+            "split" -> ParamInfo.Fixed(2)
+            "join" -> ParamInfo.Fixed(2)
+            "lowercase", "uppercase" -> ParamInfo.Fixed(1)
+            "sha256-hex" -> ParamInfo.Fixed(1)
+            "starts-with", "ends-with" -> ParamInfo.Fixed(2)
+            "from-json" -> ParamInfo.Range(1, 2)  // optional fallback
+            "to-json" -> ParamInfo.Fixed(1)
+            "replace" -> ParamInfo.Fixed(3)
+            "trim" -> ParamInfo.Fixed(1)
+            "uuid" -> ParamInfo.Specific(setOf(0, 2))  // 0 for random UUID, or 2 for UUID v1
             
             // Boolean functions
-            "boolean" -> Triple(1, 1, false)
-            "not" -> Triple(1, 1, false)
-            "is-boolean" -> Triple(1, 1, false)
+            "boolean" -> ParamInfo.Fixed(1)
+            "not" -> ParamInfo.Fixed(1)
+            "is-boolean" -> ParamInfo.Fixed(1)
             
             // Object functions
-            "is-object" -> Triple(1, 1, false)
-            "get-key" -> Triple(2, 3, false)  // optional fallback
+            "is-object" -> ParamInfo.Fixed(1)
+            "get-key" -> ParamInfo.Range(2, 3)  // optional fallback
             
             // Array functions
-            "array" -> Triple(1, 1, false)
-            "is-array" -> Triple(1, 1, false)
-            "flatten" -> Triple(1, 1, false)
-            "all", "any" -> Triple(1, 1, false)
-            "zip" -> Triple(2, 2, false)
-            "zip-with-index" -> Triple(1, 1, false)
-            "index-of" -> Triple(2, 2, false)
+            "array" -> ParamInfo.Fixed(1)
+            "is-array" -> ParamInfo.Fixed(1)
+            "flatten" -> ParamInfo.Fixed(1)
+            "all", "any" -> ParamInfo.Fixed(1)
+            "zip" -> ParamInfo.Fixed(2)
+            "zip-with-index" -> ParamInfo.Fixed(1)
+            "index-of" -> ParamInfo.Fixed(2)
             
             // Time functions
-            "now" -> Triple(0, 0, false)
-            "parse-time" -> Triple(2, 3, false)  // optional fallback
-            "format-time" -> Triple(2, 3, false)  // optional timezone
+            "now" -> ParamInfo.Fixed(0)
+            "parse-time" -> ParamInfo.Range(2, 3)  // optional fallback
+            "format-time" -> ParamInfo.Range(2, 3)  // optional timezone
             
             // URL functions
-            "parse-url" -> Triple(1, 1, false)
+            "parse-url" -> ParamInfo.Fixed(1)
             
             else -> null  // Unknown function, don't validate
         }
