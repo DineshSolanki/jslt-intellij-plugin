@@ -47,7 +47,8 @@
 
 ## ToDO
 
-None - all planned features are implemented!
+* Syntax Highlighting
+    * highlight JSLT in multiline strings in Java/Scala/Kotlin files if first line of text start with `// JSLT`
 
 ## Know issues
 
